@@ -8,9 +8,14 @@
 #include<vector>
 #include<sys/wait.h>
 #include<pwd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "pipeHandler.cpp" //for Pipe Statements
 #include "EnvSetUp.cpp" //for Environment Setup.
 #include "AliasHandler.cpp"
+#include "AppHandler.cpp"
+#include "RecordingHandler.cpp"
 #define clear() printf("\033[H\033[J")
 
 
@@ -45,8 +50,8 @@ int return_of_last_cmd=0;
   }
     
      } //end of if length!=0.
- 
-return tokens;
+
+  return tokens;
 
 
 } //end of function getTokens;
@@ -56,7 +61,10 @@ void BuildAndExecute(vector<string> input)
 {
  
      const char * command_tbe;
-     char **arguments =new char *[input.size()+1];
+     char **arguments =new char *[input.size()];
+
+     //for(auto itr=input.begin();itr!=input.end();itr++)
+     //cout<<*itr<<endl;
 
      command_tbe=input[0].c_str();
      char mycommand[300];
@@ -69,10 +77,12 @@ void BuildAndExecute(vector<string> input)
         char *mtemp=new char[300];
         strcpy(mtemp,input[i].c_str());
         arguments[k++]=mtemp;
+
+        //delete [] mtemp;
         
       }
-
-      return_of_last_cmd=execvp(mycommand,arguments);
+      arguments[k]=NULL;
+      return_of_last_cmd=execvp(command_tbe,arguments);
       //cout<<endl;
 
 
@@ -98,14 +108,14 @@ void handleOutput(string input)
   int fd;
   if(position+1==input.rfind(">")) //append to file.
   {
-     fd=open(file_to_write.c_str(),O_RDWR|O_CREAT|O_APPEND);
-    dup2(fd,1);
+     fd=open(file_to_write.c_str(),O_RDWR|O_CREAT|O_APPEND,S_IRWXU|S_IRWXG,S_IRWXO);
+     dup2(fd,1);
 
   }
  else //write new file.
  {
    
-   fd=open(file_to_write.c_str(),O_RDWR|O_CREAT);
+   fd=open(file_to_write.c_str(),O_RDWR|O_CREAT,S_IRWXU|S_IRWXG,S_IRWXO);
    dup2(fd,1);
    
 
@@ -118,16 +128,31 @@ void handleOutput(string input)
 
 void checkSpecialCommand(string input)
 {
+   
+    if(input.at(0)=='c'&&input.at(1)=='d'&&input.at(input.rfind(' ')+1)=='~')
+    {
+      char *mhome=getenv("HOME");
+      chdir(mhome);
+    }
+
    if(input.compare("exit")==0)
    {
     cout<<"Bye\n";
+    //kill(global_pid,SIGINT);
     exit(0);
    }
+
+   
 
    if(input.at(0)=='c'&&input.at(1)=='d'&&input.at(2)==' ')
    {
      
      chdir(input.substr(input.find(' ')+1,input.length()).c_str());
+     //char mcwd[200];
+     //getcwd(mcwd,200);
+     //cout<<mcwd<<endl;
+     //setenv("PWD",mcwd,1);
+     fflush(stdin);
    }
 
    if(input.compare("$$")==0)
@@ -137,13 +162,34 @@ void checkSpecialCommand(string input)
     cout<<return_of_last_cmd<<endl;
   if(input.compare("clear")==0) clear();
 
+  if(input.compare("$PATH")==0||input.compare("echo $PATH")==0)
+  {
+    string path=getenv("PATH");
+    cout<<getenv("PATH")<<endl;
+  }
+
+  if(input.compare("$HOME")==0||input.compare("echo $HOME")==0)
+  {
+    cout<<getenv("HOME")<<endl;
+  }
+
+  if(input.compare("$USER")==0||input.compare("echo $USER")==0)
+  {
+    cout<<getenv("USER")<<endl;
+  }
+
+  if(input.compare("$HOSTNAME")==0||input.compare("echo $HOSTNAME")==0)
+  {
+    cout<<getenv("HOSTNAME")<<endl;
+  }
+
 } //end of void checkSpecialCommand.
 
 string getCurrentPath1()
 {
 
   char *usern;
-    char hostname[100];
+  char hostname[100];
   char mcwd[200];
   getcwd(mcwd,200);
   usern=getlogin();
@@ -161,9 +207,19 @@ string getCurrentPath1()
  return  return_result;
 } //end of function getCurrentPath1
 
+void sigintHandler(int sig_num) 
+{ 
+    
+} 
+
 
 int main()
-{  initialiseEnv();
+{  
+   //signal(SIGINT, sigintHandler);
+
+    initialiseEnv();
+   initialiseAlias();
+   setDefaults();
    global_pid=getpid();
    char ** arguments;
    char *usern;
@@ -182,6 +238,7 @@ int main()
     vector<string> input_tokens;
     getline(cin,user_input);
 
+
     if(ifAlias(user_input))
    {   
       setUpAlias(user_input); //set up alias first if any.
@@ -189,8 +246,22 @@ int main()
       continue;
    }
       user_input=checkAliasAndExpand(user_input);
-      cout<<user_input<<endl;
-      checkSpecialCommand(user_input);
+      //cout<<user_input<<endl;
+
+     if(user_input.find("openfile")!=string::npos)
+    {  
+      //cout<<user_input<<endl;
+      appHandler(user_input); 
+       continue;
+    }
+
+      if(user_input.find("$HOSTNAME")!=string::npos||user_input.find("$USER")!=string::npos||user_input.find("exit")!=string::npos||user_input.find("cd")!=string::npos||user_input.find("$PATH")!=string::npos||user_input.find("$HOME")!=string::npos)
+      {  
+        checkSpecialCommand(user_input);
+        continue;
+       } 
+
+       
       pid_t pid1;
 
    char ** pipe_commands=new char*[100];
@@ -204,6 +275,7 @@ int main()
     
     //executePipeCommands(commands);
      executeCommandsWithPipe(pipe_commands);
+     
    } //child process code.
    wait(NULL);
 
@@ -211,10 +283,8 @@ int main()
   }
 
   else{   //Normal Code-Without pipe
-    input_tokens=getTokens(user_input);
-    for(auto it =input_tokens.begin();it!=input_tokens.end();it++)
-      cout<<*it<<endl;
-
+        input_tokens=getTokens(user_input);
+    
     /*for(int i=0;i<input_tokens.size();i++)
       cout<<"\t"<<input_tokens[i];
      cout<<endl; */
@@ -253,7 +323,7 @@ int main()
       BuildAndExecute(input_tokens);
       //cout<<endl;
          }
-      
+        
 
    }  
      wait(NULL);

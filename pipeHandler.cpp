@@ -152,7 +152,8 @@ char ** returnCommandArguments(vector<string> input)
         arguments[k++]=mtemp;
         
       }
-   return arguments;
+      arguments[k]=NULL;
+      return arguments;
 }
 
 void executeCommandsWithPipe(char ** list_of_commands)

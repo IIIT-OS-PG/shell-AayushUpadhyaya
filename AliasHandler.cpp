@@ -4,9 +4,25 @@
 #include<utility>
 #include<vector>
 #include<bits/stdc++.h>
+#include<fstream>
 using namespace std;
 
 static unordered_map<string,string> umap;
+void setUpAlias(string);
+
+void initialiseAlias()
+{
+	ifstream file1(".alias");
+	string input;
+	while(getline(file1,input))
+	{
+		if(input.find("alias")!=string::npos)
+		{
+			setUpAlias(input);
+		}
+	}
+
+}
 
 void setAlias(string key,string value)
 {
